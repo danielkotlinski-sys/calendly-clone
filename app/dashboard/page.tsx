@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { User, Booking, MeetingSettings, GoogleCalendarEvent } from '@/types';
+import type { User, Booking, MeetingSettings, GoogleCalendarEvent, MeetingType } from '@/types';
 import { formatDateDisplay } from '@/lib/utils';
 
 type AvailabilityMode = 'weekdays' | 'daterange';
@@ -13,10 +13,19 @@ export default function Dashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<GoogleCalendarEvent[]>([]);
   const [meetingSettings, setMeetingSettings] = useState<MeetingSettings | null>(null);
+  const [meetingTypes, setMeetingTypes] = useState<MeetingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
+
+  // Meeting type modal state
+  const [showMeetingTypeModal, setShowMeetingTypeModal] = useState(false);
+  const [editingMeetingType, setEditingMeetingType] = useState<MeetingType | null>(null);
+  const [mtName, setMtName] = useState('');
+  const [mtSlug, setMtSlug] = useState('');
+  const [mtDuration, setMtDuration] = useState(30);
+  const [mtIsDefault, setMtIsDefault] = useState(false);
 
   // Availability state
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('weekdays');
@@ -149,6 +158,13 @@ export default function Dashboard() {
         }
       }
 
+      // Load meeting types
+      const typesRes = await fetch(`/api/meeting-types?userId=${userId}`);
+      if (typesRes.ok) {
+        const typesData = await typesRes.json();
+        setMeetingTypes(typesData);
+      }
+
       setLoading(false);
     } catch (err) {
       setError('Wystąpił błąd podczas ładowania danych');
@@ -249,6 +265,148 @@ export default function Dashboard() {
     { value: 6, label: 'Sob' },
     { value: 0, label: 'Ndz' },
   ];
+
+  // Meeting Types functions
+  const openMeetingTypeModal = (meetingType?: MeetingType) => {
+    if (meetingType) {
+      setEditingMeetingType(meetingType);
+      setMtName(meetingType.name);
+      setMtSlug(meetingType.slug);
+      setMtDuration(meetingType.duration);
+      setMtIsDefault(meetingType.is_default);
+    } else {
+      setEditingMeetingType(null);
+      setMtName('');
+      setMtSlug('');
+      setMtDuration(30);
+      setMtIsDefault(false);
+    }
+    setShowMeetingTypeModal(true);
+  };
+
+  const closeMeetingTypeModal = () => {
+    setShowMeetingTypeModal(false);
+    setEditingMeetingType(null);
+    setMtName('');
+    setMtSlug('');
+    setMtDuration(30);
+    setMtIsDefault(false);
+  };
+
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
+
+  const handleMeetingTypeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setError('');
+    setSuccessMessage('');
+
+    const slug = mtSlug || generateSlug(mtName);
+
+    try {
+      if (editingMeetingType) {
+        // Update
+        const res = await fetch('/api/meeting-types', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingMeetingType.id,
+            name: mtName,
+            slug,
+            duration: mtDuration,
+            isDefault: mtIsDefault,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          setError(data.error || 'Błąd podczas aktualizacji typu spotkania');
+          return;
+        }
+      } else {
+        // Create
+        const res = await fetch('/api/meeting-types', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            name: mtName,
+            slug,
+            duration: mtDuration,
+            isDefault: mtIsDefault,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          setError(data.error || 'Błąd podczas tworzenia typu spotkania');
+          return;
+        }
+      }
+
+      // Reload meeting types
+      const typesRes = await fetch(`/api/meeting-types?userId=${user.id}`);
+      if (typesRes.ok) {
+        const typesData = await typesRes.json();
+        setMeetingTypes(typesData);
+      }
+
+      closeMeetingTypeModal();
+      setSuccessMessage(
+        editingMeetingType
+          ? 'Typ spotkania został zaktualizowany'
+          : 'Typ spotkania został utworzony'
+      );
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setError('Wystąpił błąd połączenia');
+    }
+  };
+
+  const handleDeleteMeetingType = async (id: number) => {
+    if (!user) return;
+    if (!confirm('Czy na pewno chcesz usunąć ten typ spotkania?')) return;
+
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const res = await fetch(`/api/meeting-types?id=${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Błąd podczas usuwania typu spotkania');
+        return;
+      }
+
+      // Reload meeting types
+      const typesRes = await fetch(`/api/meeting-types?userId=${user.id}`);
+      if (typesRes.ok) {
+        const typesData = await typesRes.json();
+        setMeetingTypes(typesData);
+      }
+
+      setSuccessMessage('Typ spotkania został usunięty');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setError('Wystąpił błąd połączenia');
+    }
+  };
+
+  const copyMeetingTypeLink = (slug: string) => {
+    const link = `${window.location.origin}/${user?.username}/${slug}`;
+    navigator.clipboard.writeText(link);
+    setSuccessMessage('Link skopiowany do schowka!');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
 
   // Helper functions for Google Calendar events
   const formatCalendarEventDate = (dateTimeString: string) => {
@@ -363,6 +521,87 @@ export default function Dashboard() {
                       Połącz z Google Calendar
                     </div>
                   </a>
+                </div>
+              )}
+            </div>
+
+            {/* Meeting Types */}
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Typy spotkań</h2>
+                <button
+                  onClick={() => openMeetingTypeModal()}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:shadow-lg transition-all font-medium text-sm"
+                >
+                  + Dodaj typ
+                </button>
+              </div>
+
+              {meetingTypes.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Nie masz jeszcze żadnych typów spotkań.</p>
+                  <p className="text-sm mt-2">Kliknij &quot;Dodaj typ&quot; żeby utworzyć pierwszy.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {meetingTypes.map((mt) => (
+                    <div
+                      key={mt.id}
+                      className="border border-gray-200 rounded-xl p-5 hover:border-indigo-300 transition-all bg-white"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-gray-900">{mt.name}</h3>
+                            {mt.is_default && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                                Domyślny
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center text-sm text-gray-600 gap-4">
+                            <span className="flex items-center">
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {mt.duration} min
+                            </span>
+                            <span className="text-gray-400">•</span>
+                            <code className="text-xs bg-gray-100 px-2 py-1 rounded">/{user.username}/{mt.slug}</code>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => copyMeetingTypeLink(mt.slug)}
+                            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Kopiuj link"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => openMeetingTypeModal(mt)}
+                            className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Edytuj"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMeetingType(mt.id)}
+                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            title="Usuń"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -675,6 +914,98 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+
+      {/* Meeting Type Modal */}
+      {showMeetingTypeModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
+            <h3 className="text-2xl font-bold text-gray-900 mb-6">
+              {editingMeetingType ? 'Edytuj typ spotkania' : 'Nowy typ spotkania'}
+            </h3>
+
+            <form onSubmit={handleMeetingTypeSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="mt-name" className="block text-sm font-medium text-gray-700 mb-2">
+                  Nazwa *
+                </label>
+                <input
+                  type="text"
+                  id="mt-name"
+                  required
+                  value={mtName}
+                  onChange={(e) => setMtName(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                  placeholder="np. Konsultacja 30 min"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="mt-slug" className="block text-sm font-medium text-gray-700 mb-2">
+                  Slug (URL) *
+                </label>
+                <input
+                  type="text"
+                  id="mt-slug"
+                  required
+                  value={mtSlug}
+                  onChange={(e) => setMtSlug(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                  placeholder="konsultacja-30"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Link: /{user?.username}/{mtSlug || generateSlug(mtName)}
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="mt-duration" className="block text-sm font-medium text-gray-700 mb-2">
+                  Długość (minuty) *
+                </label>
+                <input
+                  type="number"
+                  id="mt-duration"
+                  required
+                  min="15"
+                  max="480"
+                  step="15"
+                  value={mtDuration}
+                  onChange={(e) => setMtDuration(parseInt(e.target.value))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
+                />
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="mt-default"
+                  checked={mtIsDefault}
+                  onChange={(e) => setMtIsDefault(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="mt-default" className="ml-2 text-sm text-gray-700">
+                  Ustaw jako domyślny typ spotkania
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={closeMeetingTypeModal}
+                  className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
+                >
+                  Anuluj
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:shadow-lg transition-all font-medium"
+                >
+                  {editingMeetingType ? 'Zapisz' : 'Utwórz'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
