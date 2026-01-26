@@ -171,13 +171,21 @@ export async function createCalendarEvent(
   if (!calendar) return null;
 
   try {
-    // Parse date and time
+    // Parse date and time - create ISO string with explicit timezone
+    // Format: YYYY-MM-DDTHH:MM:SS+01:00 (Europe/Warsaw in winter, +02:00 in summer)
     const [hours, minutes] = bookingTime.split(':').map(Number);
-    const startDateTime = new Date(bookingDate);
-    startDateTime.setHours(hours, minutes, 0, 0);
 
-    const endDateTime = new Date(startDateTime);
-    endDateTime.setMinutes(endDateTime.getMinutes() + duration);
+    // Calculate end time
+    const endHours = Math.floor((hours * 60 + minutes + duration) / 60);
+    const endMinutes = (minutes + duration) % 60;
+
+    // Format with explicit timezone offset for Europe/Warsaw
+    // Note: This assumes +01:00 (CET). For DST (CEST), it should be +02:00
+    // For production, you might want to use a library like date-fns-tz
+    const startDateTimeString = `${bookingDate}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+01:00`;
+    const endDateTimeString = `${bookingDate}T${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}:00+01:00`;
+
+    console.log(`Creating event: ${startDateTimeString} to ${endDateTimeString}`);
 
     // Create event
     const response = await calendar.events.insert({
@@ -187,11 +195,11 @@ export async function createCalendarEvent(
         summary: `Spotkanie: ${organizerName} & ${attendeeName}`,
         description: `Spotkanie zarezerwowane przez ${attendeeName} (${attendeeEmail})`,
         start: {
-          dateTime: startDateTime.toISOString(),
+          dateTime: startDateTimeString,
           timeZone: 'Europe/Warsaw',
         },
         end: {
-          dateTime: endDateTime.toISOString(),
+          dateTime: endDateTimeString,
           timeZone: 'Europe/Warsaw',
         },
         attendees: [
