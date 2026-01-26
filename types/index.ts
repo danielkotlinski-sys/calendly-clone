@@ -86,3 +86,13 @@ export interface GoogleCalendarEvent {
   meetLink?: string;
   htmlLink?: string;
 }
+
+export interface MeetingType {
+  id: number;
+  user_id: number;
+  name: string;
+  slug: string;
+  duration: number;
+  is_default: boolean;
+  created_at: string;
+}

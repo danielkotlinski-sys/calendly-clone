@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAvailability, getMeetingSettings, isTimeSlotAvailable } from '@/lib/db';
 import { generateTimeSlots, getDayOfWeek, formatDate } from '@/lib/utils';
 
-// GET /api/availability/month?userId=123&year=2026&month=1
+// GET /api/availability/month?userId=123&year=2026&month=1&duration=30
 // Returns availability for entire month in single request
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const year = searchParams.get('year');
     const month = searchParams.get('month');
+    const durationParam = searchParams.get('duration');
 
     if (!userId || !year || !month) {
       return NextResponse.json(
@@ -28,18 +29,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({});
     }
 
-    // Get meeting duration
-    const settings = await getMeetingSettings(userIdNum);
-    if (!settings) {
-      return NextResponse.json(
-        { error: 'Użytkownik nie ma ustawionej długości spotkań' },
-        { status: 400 }
-      );
+    // Get meeting duration - from param or from settings (backwards compatibility)
+    let duration: number;
+    let minimumNotice: number = 0;
+
+    if (durationParam) {
+      duration = parseInt(durationParam);
+      // Still get settings for minimum_notice
+      const settings = await getMeetingSettings(userIdNum);
+      if (settings) {
+        minimumNotice = settings.minimum_notice || 0;
+      }
+    } else {
+      const settings = await getMeetingSettings(userIdNum);
+      if (!settings) {
+        return NextResponse.json(
+          { error: 'Użytkownik nie ma ustawionej długości spotkań' },
+          { status: 400 }
+        );
+      }
+      duration = settings.duration;
+      minimumNotice = settings.minimum_notice || 0;
     }
 
     // Calculate minimum booking time based on minimum_notice
     const now = new Date();
-    const minimumNoticeMs = (settings.minimum_notice || 0) * 60 * 60 * 1000;
+    const minimumNoticeMs = minimumNotice * 60 * 60 * 1000;
     const minimumBookingTime = new Date(now.getTime() + minimumNoticeMs);
 
     // Calculate days in month
@@ -81,7 +96,7 @@ export async function GET(request: NextRequest) {
         const timeSlots = generateTimeSlots(
           slot.start_time,
           slot.end_time,
-          settings.duration
+          duration
         );
 
         for (const time of timeSlots) {
@@ -96,7 +111,7 @@ export async function GET(request: NextRequest) {
             userIdNum,
             dateStr,
             time,
-            settings.duration
+            duration
           );
 
           if (available) {

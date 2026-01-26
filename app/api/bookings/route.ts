@@ -18,6 +18,7 @@ const createBookingSchema = z.object({
   attendee_phone: z.string().optional(),
   booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format daty: YYYY-MM-DD'),
   booking_time: z.string().regex(/^\d{2}:\d{2}$/, 'Format czasu: HH:MM'),
+  duration: z.number().optional(),
 });
 
 // POST /api/bookings - Create new booking
@@ -37,13 +38,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get meeting duration
-    const settings = await getMeetingSettings(validatedData.user_id);
-    if (!settings) {
-      return NextResponse.json(
-        { error: 'Użytkownik nie ma ustawionej długości spotkań' },
-        { status: 400 }
-      );
+    // Get meeting duration - from body or from settings (backwards compatibility)
+    let duration: number;
+
+    if (validatedData.duration) {
+      duration = validatedData.duration;
+    } else {
+      const settings = await getMeetingSettings(validatedData.user_id);
+      if (!settings) {
+        return NextResponse.json(
+          { error: 'Użytkownik nie ma ustawionej długości spotkań' },
+          { status: 400 }
+        );
+      }
+      duration = settings.duration;
     }
 
     // Check if time slot is available
@@ -51,7 +59,7 @@ export async function POST(request: NextRequest) {
       validatedData.user_id,
       validatedData.booking_date,
       validatedData.booking_time,
-      settings.duration
+      duration
     );
 
     if (!available) {
@@ -68,7 +76,7 @@ export async function POST(request: NextRequest) {
       validatedData.attendee_email,
       validatedData.booking_date,
       validatedData.booking_time,
-      settings.duration,
+      duration,
       validatedData.attendee_phone
     );
 
@@ -82,7 +90,7 @@ export async function POST(request: NextRequest) {
           validatedData.attendee_email,
           validatedData.booking_date,
           validatedData.booking_time,
-          settings.duration,
+          duration,
           user.name,
           user.email
         );

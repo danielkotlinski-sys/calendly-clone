@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { sql } from '@vercel/postgres';
-import type { User, Availability, MeetingSettings, Booking } from '@/types';
+import type { User, Availability, MeetingSettings, Booking, MeetingType } from '@/types';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -60,6 +60,17 @@ if (!isProduction) {
       access_token TEXT NOT NULL,
       refresh_token TEXT NOT NULL,
       expiry_date INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS meeting_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      duration INTEGER NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
@@ -287,6 +298,153 @@ export async function isTimeSlotAvailable(
   }
 
   return true;
+}
+
+// Meeting Types CRUD operations
+export async function createMeetingType(
+  userId: number,
+  name: string,
+  slug: string,
+  duration: number,
+  isDefault: boolean = false
+): Promise<MeetingType> {
+  if (isProduction) {
+    // If this is default, unset other defaults
+    if (isDefault) {
+      await sql`UPDATE meeting_types SET is_default = 0 WHERE user_id = ${userId}`;
+    }
+
+    const result = await sql`
+      INSERT INTO meeting_types (user_id, name, slug, duration, is_default)
+      VALUES (${userId}, ${name}, ${slug}, ${duration}, ${isDefault ? 1 : 0})
+      RETURNING *
+    `;
+    return result.rows[0] as MeetingType;
+  } else {
+    // If this is default, unset other defaults
+    if (isDefault) {
+      const unsetStmt = db!.prepare('UPDATE meeting_types SET is_default = 0 WHERE user_id = ?');
+      unsetStmt.run(userId);
+    }
+
+    const stmt = db!.prepare(
+      'INSERT INTO meeting_types (user_id, name, slug, duration, is_default) VALUES (?, ?, ?, ?, ?)'
+    );
+    const info = stmt.run(userId, name, slug, duration, isDefault ? 1 : 0);
+    const getStmt = db!.prepare('SELECT * FROM meeting_types WHERE id = ?');
+    const result = getStmt.get(info.lastInsertRowid) as any;
+    return {
+      ...result,
+      is_default: Boolean(result.is_default),
+    } as MeetingType;
+  }
+}
+
+export async function getMeetingTypesByUserId(userId: number): Promise<MeetingType[]> {
+  if (isProduction) {
+    const result = await sql`SELECT * FROM meeting_types WHERE user_id = ${userId} ORDER BY is_default DESC, created_at ASC`;
+    return result.rows.map((row: any) => ({
+      ...row,
+      is_default: Boolean(row.is_default),
+    })) as MeetingType[];
+  } else {
+    const stmt = db!.prepare('SELECT * FROM meeting_types WHERE user_id = ? ORDER BY is_default DESC, created_at ASC');
+    const results = stmt.all(userId) as any[];
+    return results.map((row) => ({
+      ...row,
+      is_default: Boolean(row.is_default),
+    })) as MeetingType[];
+  }
+}
+
+export async function getMeetingTypeBySlug(userId: number, slug: string): Promise<MeetingType | null> {
+  if (isProduction) {
+    const result = await sql`SELECT * FROM meeting_types WHERE user_id = ${userId} AND slug = ${slug}`;
+    const row = result.rows[0] as any;
+    return row ? {
+      ...row,
+      is_default: Boolean(row.is_default),
+    } as MeetingType : null;
+  } else {
+    const stmt = db!.prepare('SELECT * FROM meeting_types WHERE user_id = ? AND slug = ?');
+    const result = stmt.get(userId, slug) as any;
+    return result ? {
+      ...result,
+      is_default: Boolean(result.is_default),
+    } as MeetingType : null;
+  }
+}
+
+export async function getDefaultMeetingType(userId: number): Promise<MeetingType | null> {
+  if (isProduction) {
+    const result = await sql`SELECT * FROM meeting_types WHERE user_id = ${userId} AND is_default = 1`;
+    const row = result.rows[0] as any;
+    return row ? {
+      ...row,
+      is_default: Boolean(row.is_default),
+    } as MeetingType : null;
+  } else {
+    const stmt = db!.prepare('SELECT * FROM meeting_types WHERE user_id = ? AND is_default = 1');
+    const result = stmt.get(userId) as any;
+    return result ? {
+      ...result,
+      is_default: Boolean(result.is_default),
+    } as MeetingType : null;
+  }
+}
+
+export async function updateMeetingType(
+  id: number,
+  name: string,
+  slug: string,
+  duration: number,
+  isDefault: boolean
+): Promise<MeetingType> {
+  if (isProduction) {
+    // If this is default, unset other defaults
+    if (isDefault) {
+      const meetingType = await sql`SELECT user_id FROM meeting_types WHERE id = ${id}`;
+      const userId = (meetingType.rows[0] as any).user_id;
+      await sql`UPDATE meeting_types SET is_default = 0 WHERE user_id = ${userId} AND id != ${id}`;
+    }
+
+    const result = await sql`
+      UPDATE meeting_types
+      SET name = ${name}, slug = ${slug}, duration = ${duration}, is_default = ${isDefault ? 1 : 0}
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return result.rows[0] as MeetingType;
+  } else {
+    // If this is default, unset other defaults
+    if (isDefault) {
+      const getStmt = db!.prepare('SELECT user_id FROM meeting_types WHERE id = ?');
+      const meeting = getStmt.get(id) as any;
+      const unsetStmt = db!.prepare('UPDATE meeting_types SET is_default = 0 WHERE user_id = ? AND id != ?');
+      unsetStmt.run(meeting.user_id, id);
+    }
+
+    const stmt = db!.prepare(
+      'UPDATE meeting_types SET name = ?, slug = ?, duration = ?, is_default = ? WHERE id = ?'
+    );
+    stmt.run(name, slug, duration, isDefault ? 1 : 0, id);
+
+    const getStmt = db!.prepare('SELECT * FROM meeting_types WHERE id = ?');
+    const result = getStmt.get(id) as any;
+    return {
+      ...result,
+      is_default: Boolean(result.is_default),
+    } as MeetingType;
+  }
+}
+
+export async function deleteMeetingType(id: number): Promise<void> {
+  if (isProduction) {
+    await sql`DELETE FROM meeting_types WHERE id = ${id}`;
+  } else {
+    const stmt = db!.prepare('DELETE FROM meeting_types WHERE id = ?');
+    stmt.run(id);
+  }
 }
 
 export { db };

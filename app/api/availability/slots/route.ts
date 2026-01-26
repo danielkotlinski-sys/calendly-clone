@@ -3,12 +3,13 @@ import { getAvailability, getMeetingSettings, isTimeSlotAvailable } from '@/lib/
 import { generateTimeSlots, getDayOfWeek } from '@/lib/utils';
 import { getBusyTimes, isCalendarConnected } from '@/lib/google-calendar';
 
-// GET /api/availability/slots?userId=123&date=2026-01-26
+// GET /api/availability/slots?userId=123&date=2026-01-26&duration=30
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
     const date = searchParams.get('date');
+    const durationParam = searchParams.get('duration');
 
     if (!userId || !date) {
       return NextResponse.json(
@@ -25,13 +26,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([]);
     }
 
-    // Get meeting duration
-    const settings = await getMeetingSettings(userIdNum);
-    if (!settings) {
-      return NextResponse.json(
-        { error: 'Użytkownik nie ma ustawionej długości spotkań' },
-        { status: 400 }
-      );
+    // Get meeting duration - from param or from settings (backwards compatibility)
+    let duration: number;
+    let minimumNotice: number = 0;
+
+    if (durationParam) {
+      duration = parseInt(durationParam);
+      // Still get settings for minimum_notice
+      const settings = await getMeetingSettings(userIdNum);
+      if (settings) {
+        minimumNotice = settings.minimum_notice || 0;
+      }
+    } else {
+      const settings = await getMeetingSettings(userIdNum);
+      if (!settings) {
+        return NextResponse.json(
+          { error: 'Użytkownik nie ma ustawionej długości spotkań' },
+          { status: 400 }
+        );
+      }
+      duration = settings.duration;
+      minimumNotice = settings.minimum_notice || 0;
     }
 
     // Get day of week for the requested date
@@ -58,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     // Calculate minimum booking time based on minimum_notice
     const now = new Date();
-    const minimumNoticeMs = (settings.minimum_notice || 0) * 60 * 60 * 1000;
+    const minimumNoticeMs = minimumNotice * 60 * 60 * 1000;
     const minimumBookingTime = new Date(now.getTime() + minimumNoticeMs);
 
     // Get busy times from Google Calendar if connected
@@ -80,7 +95,7 @@ export async function GET(request: NextRequest) {
       const timeSlots = generateTimeSlots(
         slot.start_time,
         slot.end_time,
-        settings.duration
+        duration
       );
 
       for (const time of timeSlots) {
@@ -96,13 +111,13 @@ export async function GET(request: NextRequest) {
           userIdNum,
           date,
           time,
-          settings.duration
+          duration
         );
 
         // Also check against Google Calendar busy times
         if (available && googleCalendarBusy.length > 0) {
           const slotStart = slotDateTime.getTime();
-          const slotEnd = slotStart + settings.duration * 60 * 1000;
+          const slotEnd = slotStart + duration * 60 * 1000;
 
           for (const busy of googleCalendarBusy) {
             const busyStart = new Date(busy.start).getTime();
