@@ -85,7 +85,8 @@ export async function GET(request: NextRequest) {
 
       for (const time of timeSlots) {
         // Check if slot meets minimum notice requirement
-        const slotDateTime = new Date(`${date}T${time}`);
+        // IMPORTANT: Add timezone info to match Google Calendar format
+        const slotDateTime = new Date(`${date}T${time}:00+01:00`); // Europe/Warsaw
         if (slotDateTime < minimumBookingTime) {
           continue; // Skip slots that are too soon
         }
@@ -107,9 +108,17 @@ export async function GET(request: NextRequest) {
             const busyStart = new Date(busy.start).getTime();
             const busyEnd = new Date(busy.end).getTime();
 
+            // Debug logging
+            if (process.env.NODE_ENV === 'production') {
+              console.log(`Checking slot ${time}: ${slotStart} - ${slotEnd}`);
+              console.log(`Against busy: ${busyStart} - ${busyEnd}`);
+              console.log(`Overlap? ${slotStart < busyEnd && slotEnd > busyStart}`);
+            }
+
             // Check for overlap
             if (slotStart < busyEnd && slotEnd > busyStart) {
               available = false;
+              console.log(`❌ Slot ${time} blocked by Google Calendar event`);
               break;
             }
           }
