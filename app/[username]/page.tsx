@@ -23,6 +23,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [loadingAvailability, setLoadingAvailability] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -41,6 +42,8 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
   useEffect(() => {
     if (user) {
       loadMonthAvailability();
+      // Preload next month for faster navigation
+      preloadNextMonth();
     }
   }, [user, currentMonth]);
 
@@ -95,9 +98,29 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
     }
   };
 
+  const preloadNextMonth = async () => {
+    if (!user) return;
+
+    // Calculate next month
+    const nextMonth = new Date(currentMonth);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+    const year = nextMonth.getFullYear();
+    const month = nextMonth.getMonth();
+
+    // Preload in background (no loading state)
+    try {
+      await fetch(`/api/availability/month?userId=${user.id}&year=${year}&month=${month}`);
+      // Data is now cached by browser for instant loading when user navigates
+    } catch (err) {
+      // Silent fail - it's just optimization
+    }
+  };
+
   const loadSlots = async () => {
     if (!user || !selectedDate) return;
 
+    setLoadingSlots(true);
     try {
       const res = await fetch(`/api/availability/slots?userId=${user.id}&date=${selectedDate}`);
       if (res.ok) {
@@ -106,6 +129,8 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
       }
     } catch (err) {
       console.error('Error loading slots:', err);
+    } finally {
+      setLoadingSlots(false);
     }
   };
 
@@ -294,7 +319,19 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Interactive Calendar */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100">
+            <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100 relative">
+              {/* Loading Indicator - floating on top */}
+              {loadingAvailability && (
+                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-xl z-50 flex items-center justify-center">
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
+                      <span className="text-indigo-700 font-medium">Trwa ładowanie dostępności, proszę o cierpliwość...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Month Navigation */}
               <div className="flex items-center justify-between mb-8">
                 <button
@@ -319,16 +356,6 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                   </svg>
                 </button>
               </div>
-
-              {/* Loading Indicator */}
-              {loadingAvailability && (
-                <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
-                    <span className="text-indigo-700 font-medium">Trwa ładowanie dostępności, proszę o cierpliwość...</span>
-                  </div>
-                </div>
-              )}
 
               {/* Day Headers */}
               <div className="grid grid-cols-7 gap-2 mb-4">
@@ -401,16 +428,28 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                 <p className="text-gray-600 text-sm">Wybierz dostępny dzień z kalendarza, aby zobaczyć wolne terminy</p>
               </div>
             ) : !showForm ? (
-              <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+              <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 relative">
+                {/* Loading indicator for slots */}
+                {loadingSlots && (
+                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-xl z-50 flex items-center justify-center">
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
+                        <span className="text-indigo-700 font-medium">Ładowanie godzin...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <h3 className="text-lg font-bold text-gray-900 mb-4">
                   {formatDateDisplay(selectedDate)}
                 </h3>
 
-                {slots.length === 0 || !slots.some(s => s.available) ? (
+                {!loadingSlots && (slots.length === 0 || !slots.some(s => s.available)) ? (
                   <p className="text-gray-500 text-center py-8 text-sm">
                     Brak dostępnych terminów w wybranym dniu
                   </p>
-                ) : (
+                ) : !loadingSlots && (
                   <div className="space-y-2">
                     {slots
                       .filter((slot) => slot.available)
