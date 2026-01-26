@@ -51,9 +51,17 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            Calendly Clone
-          </h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Calendly Clone
+            </h1>
+            <a
+              href="/dashboard"
+              className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+            >
+              Dashboard
+            </a>
+          </div>
         </div>
       </header>
 
