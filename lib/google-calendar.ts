@@ -118,19 +118,38 @@ export async function getBusyTimes(
   if (!calendar) return [];
 
   try {
+    // First, get list of all user's calendars
+    const calendarList = await calendar.calendarList.list();
+    const calendarIds = calendarList.data.items?.map(cal => ({ id: cal.id })) || [{ id: 'primary' }];
+
+    console.log(`Checking busy times for ${calendarIds.length} calendars`);
+
+    // Query freebusy for ALL calendars
     const response = await calendar.freebusy.query({
       requestBody: {
-        timeMin: `${startDate}T00:00:00Z`,
-        timeMax: `${endDate}T23:59:59Z`,
-        items: [{ id: 'primary' }],
+        timeMin: `${startDate}T00:00:00+01:00`, // Europe/Warsaw timezone
+        timeMax: `${endDate}T23:59:59+01:00`,
+        timeZone: 'Europe/Warsaw',
+        items: calendarIds,
       },
     });
 
-    const busySlots = response.data.calendars?.primary?.busy || [];
-    return busySlots.map((slot: any) => ({
-      start: slot.start,
-      end: slot.end,
-    }));
+    // Collect busy slots from all calendars
+    const allBusySlots: Array<{ start: string; end: string }> = [];
+
+    if (response.data.calendars) {
+      for (const [calendarId, calendarData] of Object.entries(response.data.calendars)) {
+        const busySlots = (calendarData as any).busy || [];
+        console.log(`Calendar ${calendarId}: ${busySlots.length} busy slots`);
+        allBusySlots.push(...busySlots.map((slot: any) => ({
+          start: slot.start,
+          end: slot.end,
+        })));
+      }
+    }
+
+    console.log(`Total busy slots found: ${allBusySlots.length}`);
+    return allBusySlots;
   } catch (error) {
     console.error('Error fetching busy times:', error);
     return [];
