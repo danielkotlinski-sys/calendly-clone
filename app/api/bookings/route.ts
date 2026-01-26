@@ -8,6 +8,7 @@ import {
   getMeetingSettings,
 } from '@/lib/db';
 import { sendBookingEmails } from '@/lib/email';
+import { createCalendarEvent, isCalendarConnected } from '@/lib/google-calendar';
 
 // Validation schema
 const createBookingSchema = z.object({
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create booking
-    const booking = await createBooking(
+    let booking = await createBooking(
       validatedData.user_id,
       validatedData.attendee_name,
       validatedData.attendee_email,
@@ -70,6 +71,35 @@ export async function POST(request: NextRequest) {
       settings.duration,
       validatedData.attendee_phone
     );
+
+    // Try to create Google Calendar event if user has connected
+    const calendarConnected = await isCalendarConnected(validatedData.user_id);
+    if (calendarConnected) {
+      try {
+        const calendarEvent = await createCalendarEvent(
+          validatedData.user_id,
+          validatedData.attendee_name,
+          validatedData.attendee_email,
+          validatedData.booking_date,
+          validatedData.booking_time,
+          settings.duration,
+          user.name,
+          user.email
+        );
+
+        if (calendarEvent) {
+          // Update booking with Google Calendar event details
+          booking = {
+            ...booking,
+            google_calendar_event_id: calendarEvent.eventId,
+            google_meet_link: calendarEvent.meetLink,
+          };
+        }
+      } catch (error) {
+        console.error('Error creating Google Calendar event:', error);
+        // Continue without Calendar event - booking still succeeds
+      }
+    }
 
     // Send confirmation emails (don't wait for it to complete)
     sendBookingEmails(user, booking).catch((error) => {

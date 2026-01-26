@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false);
 
   // Availability state
   const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('weekdays');
@@ -47,6 +48,44 @@ export default function Dashboard() {
 
     loadUserData(userId);
   }, [router]);
+
+  // Check for OAuth callback messages and Google Calendar connection status
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('success');
+    const errorParam = params.get('error');
+
+    if (success === 'google_connected') {
+      setSuccessMessage('Google Calendar połączony pomyślnie!');
+      setGoogleCalendarConnected(true);
+      // Clean URL
+      window.history.replaceState({}, '', '/dashboard');
+    }
+
+    if (errorParam === 'google_auth_denied') {
+      setError('Anulowano autoryzację Google Calendar');
+      window.history.replaceState({}, '', '/dashboard');
+    } else if (errorParam === 'google_auth_failed') {
+      setError('Błąd autoryzacji Google Calendar');
+      window.history.replaceState({}, '', '/dashboard');
+    }
+
+    // Check if Google Calendar is connected
+    const checkGoogleCalendar = async () => {
+      const userId = getUserId() || 1;
+      try {
+        const res = await fetch(`/api/auth/google/status?userId=${userId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setGoogleCalendarConnected(data.connected);
+        }
+      } catch (err) {
+        console.error('Error checking Google Calendar status:', err);
+      }
+    };
+
+    checkGoogleCalendar();
+  }, []);
 
   const loadUserData = async (userId: number) => {
     try {
@@ -255,6 +294,38 @@ export default function Dashboard() {
                   Kopiuj
                 </button>
               </div>
+            </div>
+
+            {/* Google Calendar Integration */}
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Google Calendar</h2>
+              {googleCalendarConnected ? (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 flex items-center gap-3 px-5 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-emerald-700 font-medium">Połączono z Google Calendar</span>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-gray-600 mb-6">
+                    Połącz swój kalendarz Google, aby automatycznie blokować zajęte godziny i tworzyć spotkania z Google Meet.
+                  </p>
+                  <a
+                    href={`/api/auth/google?userId=${user.id}`}
+                    className="inline-block px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:shadow-lg transition-all font-medium"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46C10.21 6.23 11.08 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 18.16 24 16.68 24 15c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z"/>
+                      </svg>
+                      Połącz z Google Calendar
+                    </div>
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Availability Settings */}

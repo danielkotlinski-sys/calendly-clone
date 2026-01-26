@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAvailability, getMeetingSettings, isTimeSlotAvailable } from '@/lib/db';
 import { generateTimeSlots, getDayOfWeek } from '@/lib/utils';
+import { getBusyTimes, isCalendarConnected } from '@/lib/google-calendar';
 
 // GET /api/availability/slots?userId=123&date=2026-01-26
 export async function GET(request: NextRequest) {
@@ -60,6 +61,18 @@ export async function GET(request: NextRequest) {
     const minimumNoticeMs = (settings.minimum_notice || 0) * 60 * 60 * 1000;
     const minimumBookingTime = new Date(now.getTime() + minimumNoticeMs);
 
+    // Get busy times from Google Calendar if connected
+    let googleCalendarBusy: Array<{ start: string; end: string }> = [];
+    const calendarConnected = await isCalendarConnected(userIdNum);
+    if (calendarConnected) {
+      try {
+        googleCalendarBusy = await getBusyTimes(userIdNum, date, date);
+      } catch (error) {
+        console.error('Error fetching Google Calendar busy times:', error);
+        // Continue without Calendar check
+      }
+    }
+
     // Generate all possible time slots
     const allSlots: { time: string; available: boolean }[] = [];
 
@@ -77,12 +90,30 @@ export async function GET(request: NextRequest) {
           continue; // Skip slots that are too soon
         }
 
-        const available = await isTimeSlotAvailable(
+        // Check if slot is available in our database
+        let available = await isTimeSlotAvailable(
           userIdNum,
           date,
           time,
           settings.duration
         );
+
+        // Also check against Google Calendar busy times
+        if (available && googleCalendarBusy.length > 0) {
+          const slotStart = slotDateTime.getTime();
+          const slotEnd = slotStart + settings.duration * 60 * 1000;
+
+          for (const busy of googleCalendarBusy) {
+            const busyStart = new Date(busy.start).getTime();
+            const busyEnd = new Date(busy.end).getTime();
+
+            // Check for overlap
+            if (slotStart < busyEnd && slotEnd > busyStart) {
+              available = false;
+              break;
+            }
+          }
+        }
 
         allSlots.push({ time, available });
       }
