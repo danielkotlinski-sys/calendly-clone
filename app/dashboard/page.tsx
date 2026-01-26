@@ -36,10 +36,13 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const userId = getUserId();
+    let userId = getUserId();
+
+    // If no cookie, use userId=1 (default for single user setup)
     if (!userId) {
-      router.push('/');
-      return;
+      userId = 1;
+      // Set cookie for future visits
+      document.cookie = `userId=1; path=/; max-age=31536000`;
     }
 
     loadUserData(userId);
