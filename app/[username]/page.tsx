@@ -71,28 +71,24 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
 
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    const availabilityMap = new Map<string, boolean>();
+    try {
+      // Single request for entire month (much faster!)
+      const res = await fetch(`/api/availability/month?userId=${user.id}&year=${year}&month=${month}`);
+      if (res.ok) {
+        const data = await res.json();
 
-    // Check availability for each day in the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
-      const dateStr = formatDate(date);
+        // Convert object to Map
+        const availabilityMap = new Map<string, boolean>();
+        Object.entries(data).forEach(([date, hasSlots]) => {
+          availabilityMap.set(date, hasSlots as boolean);
+        });
 
-      try {
-        const res = await fetch(`/api/availability/slots?userId=${user.id}&date=${dateStr}`);
-        if (res.ok) {
-          const data = await res.json();
-          const hasAvailableSlots = data.some((slot: TimeSlot) => slot.available);
-          availabilityMap.set(dateStr, hasAvailableSlots);
-        }
-      } catch (err) {
-        console.error('Error loading availability for', dateStr, err);
+        setMonthAvailability(availabilityMap);
       }
+    } catch (err) {
+      console.error('Error loading month availability:', err);
     }
-
-    setMonthAvailability(availabilityMap);
   };
 
   const loadSlots = async () => {
