@@ -22,6 +22,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -72,6 +73,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
 
+    setLoadingAvailability(true);
     try {
       // Single request for entire month (much faster!)
       const res = await fetch(`/api/availability/month?userId=${user.id}&year=${year}&month=${month}`);
@@ -88,6 +90,8 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
       }
     } catch (err) {
       console.error('Error loading month availability:', err);
+    } finally {
+      setLoadingAvailability(false);
     }
   };
 
@@ -316,6 +320,16 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                 </button>
               </div>
 
+              {/* Loading Indicator */}
+              {loadingAvailability && (
+                <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
+                    <span className="text-indigo-700 font-medium">Trwa ładowanie dostępności, proszę o cierpliwość...</span>
+                  </div>
+                </div>
+              )}
+
               {/* Day Headers */}
               <div className="grid grid-cols-7 gap-2 mb-4">
                 {['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So'].map((day) => (
@@ -447,7 +461,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                       type="text"
                       id="name"
                       required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-500"
                       placeholder="Jan Kowalski"
                       value={attendeeName}
                       onChange={(e) => setAttendeeName(e.target.value)}
@@ -462,7 +476,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                       type="email"
                       id="email"
                       required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-500"
                       placeholder="jan@example.com"
                       value={attendeeEmail}
                       onChange={(e) => setAttendeeEmail(e.target.value)}
@@ -476,7 +490,7 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
                     <input
                       type="tel"
                       id="phone"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-gray-900 placeholder-gray-500"
                       placeholder="+48 123 456 789"
                       value={attendeePhone}
                       onChange={(e) => setAttendeePhone(e.target.value)}

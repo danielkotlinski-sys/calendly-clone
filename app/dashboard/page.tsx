@@ -285,7 +285,7 @@ export default function Dashboard() {
                   type="text"
                   readOnly
                   value={`${typeof window !== 'undefined' ? window.location.origin : ''}/${user.username}`}
-                  className="flex-1 px-5 py-3 border border-gray-300 rounded-xl bg-gray-50 text-sm"
+                  className="flex-1 px-5 py-3 border border-gray-300 rounded-xl bg-white text-gray-900 text-sm"
                 />
                 <button
                   onClick={copyToClipboard}
