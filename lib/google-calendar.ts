@@ -171,21 +171,20 @@ export async function createCalendarEvent(
   if (!calendar) return null;
 
   try {
-    // Parse date and time - create ISO string with explicit timezone
-    // Format: YYYY-MM-DDTHH:MM:SS+01:00 (Europe/Warsaw in winter, +02:00 in summer)
+    // Parse date and time
+    // Let Google Calendar API handle timezone by using timeZone field instead of offset
     const [hours, minutes] = bookingTime.split(':').map(Number);
 
     // Calculate end time
-    const endHours = Math.floor((hours * 60 + minutes + duration) / 60);
-    const endMinutes = (minutes + duration) % 60;
+    const totalMinutes = hours * 60 + minutes + duration;
+    const endHours = Math.floor(totalMinutes / 60);
+    const endMinutes = totalMinutes % 60;
 
-    // Format with explicit timezone offset for Europe/Warsaw
-    // Note: This assumes +01:00 (CET). For DST (CEST), it should be +02:00
-    // For production, you might want to use a library like date-fns-tz
-    const startDateTimeString = `${bookingDate}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00+01:00`;
-    const endDateTimeString = `${bookingDate}T${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}:00+01:00`;
+    // Format WITHOUT timezone offset - let Google handle it via timeZone field
+    const startDateTimeString = `${bookingDate}T${bookingTime}:00`;
+    const endDateTimeString = `${bookingDate}T${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}:00`;
 
-    console.log(`Creating event: ${startDateTimeString} to ${endDateTimeString}`);
+    console.log(`Creating event: ${startDateTimeString} to ${endDateTimeString} (Europe/Warsaw)`);
 
     // Create event
     const response = await calendar.events.insert({
