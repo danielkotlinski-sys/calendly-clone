@@ -5,7 +5,8 @@ import { setMeetingDuration, getMeetingSettings } from '@/lib/db';
 // Validation schema
 const meetingSettingsSchema = z.object({
   user_id: z.number(),
-  duration: z.union([z.literal(15), z.literal(30), z.literal(60)]),
+  duration: z.number().min(15).max(480).multipleOf(15),
+  minimum_notice: z.number().min(0).optional(),
 });
 
 // POST /api/meeting-settings - Set meeting duration
@@ -19,7 +20,8 @@ export async function POST(request: NextRequest) {
     // Set meeting duration
     const settings = await setMeetingDuration(
       validatedData.user_id,
-      validatedData.duration
+      validatedData.duration,
+      validatedData.minimum_notice || 0
     );
 
     return NextResponse.json(settings, { status: 201 });

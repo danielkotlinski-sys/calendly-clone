@@ -23,9 +23,11 @@ if (!isProduction) {
     CREATE TABLE IF NOT EXISTS availability (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      day_of_week INTEGER NOT NULL,
+      day_of_week INTEGER,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
+      start_date TEXT,
+      end_date TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
@@ -33,6 +35,7 @@ if (!isProduction) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER UNIQUE NOT NULL,
       duration INTEGER NOT NULL,
+      minimum_notice INTEGER DEFAULT 0,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
@@ -41,10 +44,22 @@ if (!isProduction) {
       user_id INTEGER NOT NULL,
       attendee_name TEXT NOT NULL,
       attendee_email TEXT NOT NULL,
+      attendee_phone TEXT,
       booking_date TEXT NOT NULL,
       booking_time TEXT NOT NULL,
       duration INTEGER NOT NULL,
+      google_calendar_event_id TEXT,
+      google_meet_link TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS google_calendar_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expiry_date INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
@@ -101,28 +116,32 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 // Availability CRUD operations
 export async function setAvailability(
   userId: number,
-  dayOfWeek: number,
+  dayOfWeek: number | null,
   startTime: string,
-  endTime: string
+  endTime: string,
+  startDate?: string,
+  endDate?: string
 ): Promise<Availability> {
   if (isProduction) {
     const result = await sql`
-      INSERT INTO availability (user_id, day_of_week, start_time, end_time)
-      VALUES (${userId}, ${dayOfWeek}, ${startTime}, ${endTime})
+      INSERT INTO availability (user_id, day_of_week, start_time, end_time, start_date, end_date)
+      VALUES (${userId}, ${dayOfWeek}, ${startTime}, ${endTime}, ${startDate || null}, ${endDate || null})
       RETURNING *
     `;
     return result.rows[0] as Availability;
   } else {
     const stmt = db!.prepare(
-      'INSERT INTO availability (user_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)'
+      'INSERT INTO availability (user_id, day_of_week, start_time, end_time, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)'
     );
-    const info = stmt.run(userId, dayOfWeek, startTime, endTime);
+    const info = stmt.run(userId, dayOfWeek, startTime, endTime, startDate || null, endDate || null);
     return {
       id: info.lastInsertRowid as number,
       user_id: userId,
-      day_of_week: dayOfWeek,
+      day_of_week: dayOfWeek || undefined,
       start_time: startTime,
       end_time: endTime,
+      start_date: startDate,
+      end_date: endDate,
     };
   }
 }
@@ -147,22 +166,26 @@ export async function getAvailability(userId: number): Promise<Availability[]> {
 }
 
 // Meeting Settings operations
-export async function setMeetingDuration(userId: number, duration: number): Promise<MeetingSettings> {
+export async function setMeetingDuration(userId: number, duration: number, minimumNotice: number = 0): Promise<MeetingSettings> {
   if (isProduction) {
     const result = await sql`
-      INSERT INTO meeting_settings (user_id, duration)
-      VALUES (${userId}, ${duration})
-      ON CONFLICT (user_id) DO UPDATE SET duration = ${duration}
+      INSERT INTO meeting_settings (user_id, duration, minimum_notice)
+      VALUES (${userId}, ${duration}, ${minimumNotice})
+      ON CONFLICT (user_id) DO UPDATE SET
+        duration = ${duration},
+        minimum_notice = ${minimumNotice}
       RETURNING *
     `;
     return result.rows[0] as MeetingSettings;
   } else {
     const stmt = db!.prepare(`
-      INSERT INTO meeting_settings (user_id, duration)
-      VALUES (?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET duration = excluded.duration
+      INSERT INTO meeting_settings (user_id, duration, minimum_notice)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        duration = excluded.duration,
+        minimum_notice = excluded.minimum_notice
     `);
-    stmt.run(userId, duration);
+    stmt.run(userId, duration, minimumNotice);
     const settings = await getMeetingSettings(userId);
     if (!settings) throw new Error('Failed to save meeting settings');
     return settings;
@@ -186,20 +209,21 @@ export async function createBooking(
   attendeeEmail: string,
   bookingDate: string,
   bookingTime: string,
-  duration: number
+  duration: number,
+  attendeePhone?: string
 ): Promise<Booking> {
   if (isProduction) {
     const result = await sql`
-      INSERT INTO bookings (user_id, attendee_name, attendee_email, booking_date, booking_time, duration)
-      VALUES (${userId}, ${attendeeName}, ${attendeeEmail}, ${bookingDate}, ${bookingTime}, ${duration})
+      INSERT INTO bookings (user_id, attendee_name, attendee_email, attendee_phone, booking_date, booking_time, duration)
+      VALUES (${userId}, ${attendeeName}, ${attendeeEmail}, ${attendeePhone || null}, ${bookingDate}, ${bookingTime}, ${duration})
       RETURNING *
     `;
     return result.rows[0] as Booking;
   } else {
     const stmt = db!.prepare(
-      'INSERT INTO bookings (user_id, attendee_name, attendee_email, booking_date, booking_time, duration) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO bookings (user_id, attendee_name, attendee_email, attendee_phone, booking_date, booking_time, duration) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
-    const info = stmt.run(userId, attendeeName, attendeeEmail, bookingDate, bookingTime, duration);
+    const info = stmt.run(userId, attendeeName, attendeeEmail, attendeePhone || null, bookingDate, bookingTime, duration);
     const getStmt = db!.prepare('SELECT * FROM bookings WHERE id = ?');
     return getStmt.get(info.lastInsertRowid) as Booking;
   }

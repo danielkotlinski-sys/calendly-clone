@@ -7,9 +7,11 @@ const availabilitySchema = z.object({
   user_id: z.number(),
   availability: z.array(
     z.object({
-      day_of_week: z.number().min(0).max(6),
+      day_of_week: z.number().min(0).max(6).optional(),
       start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Format czasu: HH:MM'),
       end_time: z.string().regex(/^\d{2}:\d{2}$/, 'Format czasu: HH:MM'),
+      start_date: z.string().optional(),
+      end_date: z.string().optional(),
     })
   ),
 });
@@ -30,9 +32,11 @@ export async function POST(request: NextRequest) {
     for (const slot of validatedData.availability) {
       const result = await setAvailability(
         validatedData.user_id,
-        slot.day_of_week,
+        slot.day_of_week ?? null,
         slot.start_time,
-        slot.end_time
+        slot.end_time,
+        slot.start_date,
+        slot.end_date
       );
       results.push(result);
     }

@@ -14,6 +14,7 @@ const createBookingSchema = z.object({
   user_id: z.number(),
   attendee_name: z.string().min(2).max(100),
   attendee_email: z.string().email('Nieprawidłowy format email'),
+  attendee_phone: z.string().optional(),
   booking_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format daty: YYYY-MM-DD'),
   booking_time: z.string().regex(/^\d{2}:\d{2}$/, 'Format czasu: HH:MM'),
 });
@@ -66,7 +67,8 @@ export async function POST(request: NextRequest) {
       validatedData.attendee_email,
       validatedData.booking_date,
       validatedData.booking_time,
-      settings.duration
+      settings.duration,
+      validatedData.attendee_phone
     );
 
     // Send confirmation emails (don't wait for it to complete)

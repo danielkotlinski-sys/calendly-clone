@@ -36,14 +36,29 @@ export async function GET(request: NextRequest) {
     // Get day of week for the requested date
     const dayOfWeek = getDayOfWeek(date);
 
-    // Find availability for this day
-    const dayAvailability = availability.filter(
-      (slot) => slot.day_of_week === dayOfWeek
-    );
+    // Find availability for this day (either weekday-based or date range-based)
+    const dayAvailability = availability.filter((slot) => {
+      // Weekday-based availability
+      if (slot.day_of_week !== null && slot.day_of_week !== undefined) {
+        return slot.day_of_week === dayOfWeek;
+      }
+
+      // Date range-based availability
+      if (slot.start_date && slot.end_date) {
+        return date >= slot.start_date && date <= slot.end_date;
+      }
+
+      return false;
+    });
 
     if (dayAvailability.length === 0) {
       return NextResponse.json([]);
     }
+
+    // Calculate minimum booking time based on minimum_notice
+    const now = new Date();
+    const minimumNoticeMs = (settings.minimum_notice || 0) * 60 * 60 * 1000;
+    const minimumBookingTime = new Date(now.getTime() + minimumNoticeMs);
 
     // Generate all possible time slots
     const allSlots: { time: string; available: boolean }[] = [];
@@ -56,6 +71,12 @@ export async function GET(request: NextRequest) {
       );
 
       for (const time of timeSlots) {
+        // Check if slot meets minimum notice requirement
+        const slotDateTime = new Date(`${date}T${time}`);
+        if (slotDateTime < minimumBookingTime) {
+          continue; // Skip slots that are too soon
+        }
+
         const available = await isTimeSlotAvailable(
           userIdNum,
           date,

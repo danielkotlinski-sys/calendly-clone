@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import type { User, Booking, MeetingSettings } from '@/types';
 import { formatDateDisplay } from '@/lib/utils';
 
+type AvailabilityMode = 'weekdays' | 'daterange';
+
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -15,10 +17,16 @@ export default function Dashboard() {
   const [successMessage, setSuccessMessage] = useState('');
 
   // Availability state
+  const [availabilityMode, setAvailabilityMode] = useState<AvailabilityMode>('weekdays');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [duration, setDuration] = useState<15 | 30 | 60>(30);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Meeting settings state
+  const [duration, setDuration] = useState<number>(30);
+  const [minimumNotice, setMinimumNotice] = useState<number>(0);
 
   // Get user ID from cookie
   const getUserId = () => {
@@ -58,6 +66,7 @@ export default function Dashboard() {
         const settingsData = await settingsRes.json();
         setMeetingSettings(settingsData);
         setDuration(settingsData.duration);
+        setMinimumNotice(settingsData.minimum_notice || 0);
       }
 
       // Load availability
@@ -65,10 +74,21 @@ export default function Dashboard() {
       if (availabilityRes.ok) {
         const availabilityData = await availabilityRes.json();
         if (availabilityData.length > 0) {
-          const uniqueDays = Array.from(new Set(availabilityData.map((a: any) => a.day_of_week as number))) as number[];
-          setSelectedDays(uniqueDays);
-          setStartTime(availabilityData[0].start_time);
-          setEndTime(availabilityData[0].end_time);
+          const first = availabilityData[0];
+
+          // Check if it's date range or weekdays
+          if (first.start_date && first.end_date) {
+            setAvailabilityMode('daterange');
+            setStartDate(first.start_date);
+            setEndDate(first.end_date);
+          } else {
+            setAvailabilityMode('weekdays');
+            const uniqueDays = Array.from(new Set(availabilityData.map((a: any) => a.day_of_week as number))) as number[];
+            setSelectedDays(uniqueDays);
+          }
+
+          setStartTime(first.start_time);
+          setEndTime(first.end_time);
         }
       }
 
@@ -87,11 +107,30 @@ export default function Dashboard() {
 
     try {
       // Save availability
-      const availabilityPayload = selectedDays.map((day) => ({
-        day_of_week: day,
-        start_time: startTime,
-        end_time: endTime,
-      }));
+      let availabilityPayload;
+
+      if (availabilityMode === 'weekdays') {
+        if (selectedDays.length === 0) {
+          setError('Wybierz przynajmniej jeden dzień tygodnia');
+          return;
+        }
+        availabilityPayload = selectedDays.map((day) => ({
+          day_of_week: day,
+          start_time: startTime,
+          end_time: endTime,
+        }));
+      } else {
+        if (!startDate || !endDate) {
+          setError('Wybierz zakres dat');
+          return;
+        }
+        availabilityPayload = [{
+          start_time: startTime,
+          end_time: endTime,
+          start_date: startDate,
+          end_date: endDate,
+        }];
+      }
 
       const availabilityRes = await fetch('/api/availability', {
         method: 'POST',
@@ -104,13 +143,14 @@ export default function Dashboard() {
 
       if (!availabilityRes.ok) throw new Error('Failed to save availability');
 
-      // Save meeting duration
+      // Save meeting duration and minimum notice
       const durationRes = await fetch('/api/meeting-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
-          duration,
+          duration: duration,
+          minimum_notice: minimumNotice,
         }),
       });
 
@@ -155,7 +195,7 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-xl text-gray-600">Ładowanie...</div>
       </div>
     );
@@ -164,48 +204,50 @@ export default function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-10 border-b border-indigo-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-blue-600">Panel użytkownika</h1>
-            <div className="text-sm text-gray-600">
-              Zalogowany jako: <span className="font-semibold">{user.name}</span>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Panel użytkownika
+            </h1>
+            <div className="text-sm text-gray-600 bg-white px-4 py-2 rounded-xl shadow-sm">
+              Zalogowany jako: <span className="font-semibold text-indigo-600">{user.name}</span>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Messages */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-8 shadow-sm">
             {error}
           </div>
         )}
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-6 py-4 rounded-xl mb-8 shadow-sm">
             {successMessage}
           </div>
         )}
 
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Left Column - Settings */}
-          <div className="space-y-6">
+          <div className="space-y-8">
             {/* Booking Link */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Twój link do bookingu</h2>
-              <div className="flex gap-2">
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Twój link do bookingu</h2>
+              <div className="flex gap-3">
                 <input
                   type="text"
                   readOnly
                   value={`${typeof window !== 'undefined' ? window.location.origin : ''}/${user.username}`}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="flex-1 px-5 py-3 border border-gray-300 rounded-xl bg-gray-50 text-sm"
                 />
                 <button
                   onClick={copyToClipboard}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg font-medium"
                 >
                   Kopiuj
                 </button>
@@ -213,31 +255,93 @@ export default function Dashboard() {
             </div>
 
             {/* Availability Settings */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Dostępność</h2>
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Dostępność</h2>
 
-              <div className="mb-6">
+              {/* Mode Selector */}
+              <div className="mb-8">
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Wybierz dni tygodnia
+                  Typ dostępności
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {days.map((day) => (
-                    <button
-                      key={day.value}
-                      onClick={() => handleDayToggle(day.value)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        selectedDays.includes(day.value)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {day.label}
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setAvailabilityMode('weekdays')}
+                    className={`px-4 py-3 rounded-xl font-medium transition-all ${
+                      availabilityMode === 'weekdays'
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Dni tygodnia
+                  </button>
+                  <button
+                    onClick={() => setAvailabilityMode('daterange')}
+                    className={`px-4 py-3 rounded-xl font-medium transition-all ${
+                      availabilityMode === 'daterange'
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Zakres dat
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Weekdays Mode */}
+              {availabilityMode === 'weekdays' && (
+                <div className="mb-8">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Wybierz dni tygodnia
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {days.map((day) => (
+                      <button
+                        key={day.value}
+                        onClick={() => handleDayToggle(day.value)}
+                        className={`px-5 py-3 rounded-xl font-medium transition-all ${
+                          selectedDays.includes(day.value)
+                            ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Date Range Mode */}
+              {availabilityMode === 'daterange' && (
+                <div className="mb-8">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Zakres dat
+                  </label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-2">Od</label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-2">Do</label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Time Range */}
+              <div className="grid grid-cols-2 gap-4 mb-8">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Od godziny
@@ -246,7 +350,7 @@ export default function Dashboard() {
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -257,35 +361,56 @@ export default function Dashboard() {
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Długość spotkania
+              {/* Meeting Duration */}
+              <div className="mb-8">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Długość spotkania (w minutach)
                 </label>
-                <div className="flex gap-4">
-                  {[15, 30, 60].map((dur) => (
-                    <button
-                      key={dur}
-                      onClick={() => setDuration(dur as 15 | 30 | 60)}
-                      className={`flex-1 px-4 py-3 rounded-lg font-medium transition-colors ${
-                        duration === dur
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {dur} min
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="number"
+                  min="15"
+                  max="480"
+                  step="15"
+                  value={duration}
+                  onChange={(e) => setDuration(parseInt(e.target.value))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="np. 30, 45, 60"
+                />
+                <p className="text-xs text-gray-500 mt-2">Wartości co 15 minut (15, 30, 45, 60, etc.)</p>
+              </div>
+
+              {/* Minimum Notice */}
+              <div className="mb-8">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Minimum wyprzedzenie
+                </label>
+                <select
+                  value={minimumNotice}
+                  onChange={(e) => setMinimumNotice(parseInt(e.target.value))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value={0}>Bez ograniczeń</option>
+                  <option value={4}>Minimum 4 godziny przed</option>
+                  <option value={8}>Minimum 8 godzin przed</option>
+                  <option value={24}>Minimum 24 godziny przed</option>
+                  <option value={48}>Minimum 48 godzin przed</option>
+                  <option value={72}>Minimum 72 godziny przed</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  {minimumNotice === 0
+                    ? 'Klienci mogą rezerwować w dowolnym momencie'
+                    : `Klienci nie zobaczą terminów bliższych niż ${minimumNotice}h`}
+                </p>
               </div>
 
               <button
                 onClick={handleSaveSettings}
-                className="w-full bg-green-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-green-700 transition-colors"
+                className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white py-4 px-6 rounded-xl font-semibold hover:from-emerald-700 hover:to-emerald-800 transition-all shadow-lg hover:shadow-xl"
               >
                 Zapisz ustawienia
               </button>
@@ -294,30 +419,66 @@ export default function Dashboard() {
 
           {/* Right Column - Bookings */}
           <div>
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100 sticky top-28">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 Nadchodzące spotkania ({bookings.length})
               </h2>
 
               {bookings.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
-                  Nie masz jeszcze żadnych rezerwacji
-                </p>
+                <div className="text-center py-16">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-500">Nie masz jeszcze żadnych rezerwacji</p>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                   {bookings.map((booking) => (
                     <div
                       key={booking.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors"
+                      className="border border-gray-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
                     >
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-gray-900">{booking.attendee_name}</h3>
-                        <span className="text-sm text-gray-500">{booking.duration} min</span>
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="font-semibold text-gray-900 text-lg">{booking.attendee_name}</h3>
+                        <span className="text-sm text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full">
+                          {booking.duration} min
+                        </span>
                       </div>
-                      <p className="text-sm text-gray-600 mb-1">{booking.attendee_email}</p>
-                      <p className="text-sm text-gray-800 font-medium">
+                      <p className="text-sm text-gray-600 mb-2 flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {booking.attendee_email}
+                      </p>
+                      {booking.attendee_phone && (
+                        <p className="text-sm text-gray-600 mb-2 flex items-center">
+                          <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          {booking.attendee_phone}
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-800 font-medium flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
                         {formatDateDisplay(booking.booking_date)} o {booking.booking_time}
                       </p>
+                      {booking.google_meet_link && (
+                        <a
+                          href={booking.google_meet_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17 3H7C5.9 3 5 3.9 5 5v6l-3 3v5h5l3 3h9c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                          </svg>
+                          Dołącz przez Google Meet
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
