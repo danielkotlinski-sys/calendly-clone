@@ -55,17 +55,21 @@ export async function storeTokens(userId: number, tokens: any) {
 }
 
 // Get tokens from database
-export async function getTokens(userId: number) {
+export async function getTokens(userId: number): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expiry_date: number;
+} | null> {
   if (isProduction) {
     const result = await sql`
       SELECT * FROM google_calendar_tokens WHERE user_id = ${userId}
     `;
-    return result.rows[0] || null;
+    return result.rows[0] as any || null;
   } else {
     const { default: Database } = await import('better-sqlite3');
     const db = new Database('calendly.db');
     const stmt = db.prepare('SELECT * FROM google_calendar_tokens WHERE user_id = ?');
-    const tokens = stmt.get(userId);
+    const tokens = stmt.get(userId) as any;
     db.close();
     return tokens || null;
   }
