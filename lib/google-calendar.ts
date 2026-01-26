@@ -108,6 +108,37 @@ export async function isCalendarConnected(userId: number): Promise<boolean> {
   return !!tokens;
 }
 
+// Get upcoming events from Google Calendar
+export async function getUpcomingEvents(userId: number, maxResults: number = 10) {
+  const calendar = await getCalendarClient(userId);
+  if (!calendar) return [];
+
+  try {
+    const now = new Date().toISOString();
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: now,
+      maxResults,
+      singleEvents: true,
+      orderBy: 'startTime',
+    });
+
+    const events = response.data.items || [];
+    return events.map((event: any) => ({
+      id: event.id,
+      summary: event.summary || 'Bez tytułu',
+      start: event.start?.dateTime || event.start?.date,
+      end: event.end?.dateTime || event.end?.date,
+      attendees: event.attendees?.map((a: any) => a.email) || [],
+      meetLink: event.hangoutLink || event.conferenceData?.entryPoints?.[0]?.uri,
+      htmlLink: event.htmlLink,
+    }));
+  } catch (error) {
+    console.error('Error fetching upcoming events:', error);
+    return [];
+  }
+}
+
 // Get busy times from Google Calendar
 export async function getBusyTimes(
   userId: number,

@@ -76,3 +76,13 @@ export interface AvailabilityDto {
   start_date?: string;
   end_date?: string;
 }
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  attendees?: string[];
+  meetLink?: string;
+  htmlLink?: string;
+}

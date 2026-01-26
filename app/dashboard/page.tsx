@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { User, Booking, MeetingSettings } from '@/types';
+import type { User, Booking, MeetingSettings, GoogleCalendarEvent } from '@/types';
 import { formatDateDisplay } from '@/lib/utils';
 
 type AvailabilityMode = 'weekdays' | 'daterange';
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<GoogleCalendarEvent[]>([]);
   const [meetingSettings, setMeetingSettings] = useState<MeetingSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -95,11 +96,25 @@ export default function Dashboard() {
       const userData = await userRes.json();
       setUser(userData);
 
-      // Load bookings
-      const bookingsRes = await fetch(`/api/bookings?userId=${userId}`);
-      if (bookingsRes.ok) {
-        const bookingsData = await bookingsRes.json();
-        setBookings(bookingsData);
+      // Check if Google Calendar is connected
+      const statusRes = await fetch(`/api/auth/google/status?userId=${userId}`);
+      const statusData = await statusRes.json();
+      const isGoogleConnected = statusData.connected;
+      setGoogleCalendarConnected(isGoogleConnected);
+
+      // Load events from Google Calendar if connected, otherwise from database
+      if (isGoogleConnected) {
+        const eventsRes = await fetch(`/api/calendar/events?userId=${userId}`);
+        if (eventsRes.ok) {
+          const eventsData = await eventsRes.json();
+          setCalendarEvents(eventsData);
+        }
+      } else {
+        const bookingsRes = await fetch(`/api/bookings?userId=${userId}`);
+        if (bookingsRes.ok) {
+          const bookingsData = await bookingsRes.json();
+          setBookings(bookingsData);
+        }
       }
 
       // Load meeting settings
@@ -234,6 +249,30 @@ export default function Dashboard() {
     { value: 6, label: 'Sob' },
     { value: 0, label: 'Ndz' },
   ];
+
+  // Helper functions for Google Calendar events
+  const formatCalendarEventDate = (dateTimeString: string) => {
+    const date = new Date(dateTimeString);
+    return date.toLocaleDateString('pl-PL', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatCalendarEventTime = (dateTimeString: string) => {
+    const date = new Date(dateTimeString);
+    return date.toLocaleTimeString('pl-PL', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getEventDuration = (start: string, end: string) => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    return Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+  };
 
   if (loading) {
     return (
@@ -495,67 +534,142 @@ export default function Dashboard() {
           <div>
             <div className="bg-white/90 backdrop-blur rounded-2xl shadow-lg p-8 border border-indigo-100 sticky top-28">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                Nadchodzące spotkania ({bookings.length})
+                Nadchodzące spotkania ({googleCalendarConnected ? calendarEvents.length : bookings.length})
               </h2>
 
-              {bookings.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
-                    <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+              {/* Display Google Calendar events if connected */}
+              {googleCalendarConnected ? (
+                calendarEvents.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-500">Nie masz nadchodzących spotkań</p>
                   </div>
-                  <p className="text-gray-500">Nie masz jeszcze żadnych rezerwacji</p>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                  {bookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="border border-gray-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <h3 className="font-semibold text-gray-900 text-lg">{booking.attendee_name}</h3>
-                        <span className="text-sm text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full">
-                          {booking.duration} min
-                        </span>
+                ) : (
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                    {calendarEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className="border border-gray-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className="font-semibold text-gray-900 text-lg">{event.summary || 'Bez tytułu'}</h3>
+                          <span className="text-sm text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full">
+                            {getEventDuration(event.start, event.end)} min
+                          </span>
+                        </div>
+                        {event.attendees && event.attendees.length > 0 && (
+                          <div className="mb-2">
+                            <p className="text-sm text-gray-600 flex items-center">
+                              <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                              </svg>
+                              {event.attendees.join(', ')}
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-sm text-gray-800 font-medium flex items-center mb-2">
+                          <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          {formatCalendarEventDate(event.start)} o {formatCalendarEventTime(event.start)}
+                        </p>
+                        <div className="flex gap-2 mt-3">
+                          {event.meetLink && (
+                            <a
+                              href={event.meetLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M17 3H7C5.9 3 5 3.9 5 5v6l-3 3v5h5l3 3h9c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                              </svg>
+                              Dołącz przez Google Meet
+                            </a>
+                          )}
+                          {event.htmlLink && (
+                            <a
+                              href={event.htmlLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-700 font-medium ml-auto"
+                            >
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Otwórz w Google Calendar
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-600 mb-2 flex items-center">
-                        <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        {booking.attendee_email}
-                      </p>
-                      {booking.attendee_phone && (
+                    ))}
+                  </div>
+                )
+              ) : (
+                /* Display database bookings if Google Calendar not connected */
+                bookings.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
+                      <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-500">Nie masz jeszcze żadnych rezerwacji</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                    {bookings.map((booking) => (
+                      <div
+                        key={booking.id}
+                        className="border border-gray-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-md transition-all bg-white"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <h3 className="font-semibold text-gray-900 text-lg">{booking.attendee_name}</h3>
+                          <span className="text-sm text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full">
+                            {booking.duration} min
+                          </span>
+                        </div>
                         <p className="text-sm text-gray-600 mb-2 flex items-center">
                           <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
-                          {booking.attendee_phone}
+                          {booking.attendee_email}
                         </p>
-                      )}
-                      <p className="text-sm text-gray-800 font-medium flex items-center">
-                        <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        {formatDateDisplay(booking.booking_date)} o {booking.booking_time}
-                      </p>
-                      {booking.google_meet_link && (
-                        <a
-                          href={booking.google_meet_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                        >
-                          <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M17 3H7C5.9 3 5 3.9 5 5v6l-3 3v5h5l3 3h9c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                        {booking.attendee_phone && (
+                          <p className="text-sm text-gray-600 mb-2 flex items-center">
+                            <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                            </svg>
+                            {booking.attendee_phone}
+                          </p>
+                        )}
+                        <p className="text-sm text-gray-800 font-medium flex items-center">
+                          <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          Dołącz przez Google Meet
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                          {formatDateDisplay(booking.booking_date)} o {booking.booking_time}
+                        </p>
+                        {booking.google_meet_link && (
+                          <a
+                            href={booking.google_meet_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 inline-flex items-center text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M17 3H7C5.9 3 5 3.9 5 5v6l-3 3v5h5l3 3h9c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>
+                            </svg>
+                            Dołącz przez Google Meet
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </div>
