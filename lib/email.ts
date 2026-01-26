@@ -23,7 +23,7 @@ export async function sendAttendeeConfirmation(
   duration: number
 ): Promise<void> {
   const mailOptions = {
-    from: `"Calendly Clone" <${process.env.EMAIL_USER}>`,
+    from: `"Daniel Kotliński" <${process.env.EMAIL_USER}>`,
     to: attendeeEmail,
     subject: 'Potwierdzenie rezerwacji spotkania',
     html: `
@@ -69,7 +69,7 @@ export async function sendOrganizerNotification(
   duration: number
 ): Promise<void> {
   const mailOptions = {
-    from: `"Calendly Clone" <${process.env.EMAIL_USER}>`,
+    from: `"Daniel Kotliński" <${process.env.EMAIL_USER}>`,
     to: organizer.email,
     subject: 'Nowa rezerwacja spotkania',
     html: `
