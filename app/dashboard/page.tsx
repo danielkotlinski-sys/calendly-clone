@@ -47,6 +47,13 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    // Check authentication first
+    const isAuthenticated = localStorage.getItem('dashboard_auth');
+    if (!isAuthenticated) {
+      router.push('/login');
+      return;
+    }
+
     let userId = getUserId();
 
     // If no cookie, use userId=1 (default for single user setup)
@@ -408,6 +415,11 @@ export default function Dashboard() {
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('dashboard_auth');
+    router.push('/login');
+  };
+
   // Helper functions for Google Calendar events
   const formatCalendarEventDate = (dateTimeString: string) => {
     const date = new Date(dateTimeString);
@@ -451,8 +463,16 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Panel użytkownika
             </h1>
-            <div className="text-sm text-gray-600 bg-white px-4 py-2 rounded-xl shadow-sm">
-              Zalogowany jako: <span className="font-semibold text-indigo-600">{user.name}</span>
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-gray-600 bg-white px-4 py-2 rounded-xl shadow-sm">
+                Zalogowany jako: <span className="font-semibold text-indigo-600">{user.name}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-xl transition-all"
+              >
+                Wyloguj
+              </button>
             </div>
           </div>
         </div>
