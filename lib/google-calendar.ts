@@ -233,6 +233,7 @@ export async function createCalendarEvent(
     const response = await calendar.events.insert({
       calendarId: 'primary',
       conferenceDataVersion: 1,
+      sendUpdates: 'all',
       requestBody: {
         summary: `Spotkanie: ${organizerName} & ${attendeeName}`,
         description: `Spotkanie zarezerwowane przez ${attendeeName} (${attendeeEmail})`,
