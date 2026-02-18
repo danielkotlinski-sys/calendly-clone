@@ -524,6 +524,27 @@ export default function Dashboard() {
                     </svg>
                     <span className="text-emerald-700 font-medium">Połączono z Google Calendar</span>
                   </div>
+                  <button
+                    onClick={async () => {
+                      const userId = getUserId() || 1;
+                      try {
+                        const res = await fetch(`/api/auth/google/status?userId=${userId}`, { method: 'DELETE' });
+                        if (res.ok) {
+                          setGoogleCalendarConnected(false);
+                          setCalendarEvents([]);
+                          setSuccessMessage('Google Calendar rozłączony. Możesz teraz połączyć ponownie.');
+                          setTimeout(() => setSuccessMessage(''), 5000);
+                        } else {
+                          setError('Błąd podczas rozłączania Google Calendar');
+                        }
+                      } catch {
+                        setError('Błąd połączenia');
+                      }
+                    }}
+                    className="px-4 py-3 text-sm text-red-600 border border-red-200 rounded-xl hover:bg-red-50 transition-all font-medium whitespace-nowrap"
+                  >
+                    Rozłącz
+                  </button>
                 </div>
               ) : (
                 <div>

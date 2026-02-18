@@ -54,6 +54,18 @@ export async function storeTokens(userId: number, tokens: any) {
   }
 }
 
+// Delete tokens from database
+export async function deleteTokens(userId: number): Promise<void> {
+  if (isProduction) {
+    await sql`DELETE FROM google_calendar_tokens WHERE user_id = ${userId}`;
+  } else {
+    const { default: Database } = await import('better-sqlite3');
+    const db = new Database('calendly.db');
+    db.prepare('DELETE FROM google_calendar_tokens WHERE user_id = ?').run(userId);
+    db.close();
+  }
+}
+
 // Get tokens from database
 export async function getTokens(userId: number): Promise<{
   access_token: string;
@@ -87,8 +99,8 @@ export async function getCalendarClient(userId: number) {
     expiry_date: tokens.expiry_date,
   });
 
-  // Refresh token if expired
-  if (tokens.expiry_date && Date.now() >= tokens.expiry_date) {
+  // Refresh token if expired or expiring within 5 minutes
+  if (tokens.expiry_date && Date.now() >= tokens.expiry_date - 5 * 60 * 1000) {
     try {
       const { credentials } = await oauth2Client.refreshAccessToken();
       await storeTokens(userId, credentials);
