@@ -94,6 +94,33 @@ export async function sendOrganizerNotification(
   }
 }
 
+// Send error alert to organizer
+export async function sendErrorAlert(
+  organizerEmail: string,
+  message: string
+): Promise<void> {
+  try {
+    await getResend().emails.send({
+      from: `System rezerwacji <${FROM_EMAIL}>`,
+      to: organizerEmail,
+      subject: '⚠️ Błąd systemu rezerwacji',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">⚠️ Błąd systemu rezerwacji</h2>
+          <p>Wystąpił błąd który wymaga Twojej uwagi:</p>
+          <div style="background-color: #fef2f2; border: 1px solid #fecaca; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; color: #991b1b;">${message}</p>
+          </div>
+          <p style="color: #6b7280; font-size: 12px;">Rezerwacja została zapisana w bazie danych, ale wymaga ręcznej weryfikacji.</p>
+        </div>
+      `,
+    });
+    console.log(`✅ Alert o błędzie wysłany do ${organizerEmail}`);
+  } catch (error) {
+    console.error('❌ Błąd wysyłania alertu:', error);
+  }
+}
+
 // Send both emails after booking
 export async function sendBookingEmails(
   organizer: User,

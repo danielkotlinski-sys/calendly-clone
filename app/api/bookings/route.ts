@@ -7,7 +7,7 @@ import {
   isTimeSlotAvailable,
   getMeetingSettings,
 } from '@/lib/db';
-import { sendBookingEmails } from '@/lib/email';
+import { sendBookingEmails, sendErrorAlert } from '@/lib/email';
 import { createCalendarEvent, isCalendarConnected } from '@/lib/google-calendar';
 
 // Validation schema
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
 
     // Try to create Google Calendar event if user has connected
     const calendarConnected = await isCalendarConnected(validatedData.user_id);
+    let calendarEventCreated = false;
+
     if (calendarConnected) {
       try {
         const calendarEvent = await createCalendarEvent(
@@ -96,25 +98,40 @@ export async function POST(request: NextRequest) {
         );
 
         if (calendarEvent) {
-          // Update booking with Google Calendar event details
+          calendarEventCreated = true;
           booking = {
             ...booking,
             google_calendar_event_id: calendarEvent.eventId,
             google_meet_link: calendarEvent.meetLink,
           };
+        } else {
+          // Event creation returned null - silent failure
+          console.error('Calendar event creation returned null');
+          await sendErrorAlert(
+            user.email,
+            `Nie udało się utworzyć eventu w Google Calendar dla rezerwacji: ${validatedData.attendee_name} (${validatedData.attendee_email}), ${validatedData.booking_date} ${validatedData.booking_time}`
+          );
         }
       } catch (error) {
         console.error('Error creating Google Calendar event:', error);
-        // Continue without Calendar event - booking still succeeds
+        await sendErrorAlert(
+          user.email,
+          `Błąd tworzenia eventu w Google Calendar dla rezerwacji: ${validatedData.attendee_name} (${validatedData.attendee_email}), ${validatedData.booking_date} ${validatedData.booking_time}. Błąd: ${error}`
+        );
       }
     }
 
-    // Send confirmation emails
-    try {
-      await sendBookingEmails(user, booking);
-    } catch (error) {
-      console.error('Error sending booking emails:', error);
-      // Continue - booking still succeeds even if email fails
+    // Send confirmation emails via Resend only if Google Calendar didn't handle it
+    if (!calendarEventCreated) {
+      try {
+        await sendBookingEmails(user, booking);
+      } catch (error) {
+        console.error('Error sending booking emails:', error);
+        await sendErrorAlert(
+          user.email,
+          `Nie udało się wysłać emaila potwierdzającego do: ${validatedData.attendee_name} (${validatedData.attendee_email}), ${validatedData.booking_date} ${validatedData.booking_time}. Błąd: ${error}`
+        );
+      }
     }
 
     return NextResponse.json(booking, { status: 201 });
