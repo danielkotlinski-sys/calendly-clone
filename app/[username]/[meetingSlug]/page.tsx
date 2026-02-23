@@ -75,6 +75,9 @@ export default function BookingPage({ params }: { params: Promise<{ username: st
       const meetingData = await meetingRes.json();
       setMeetingType(meetingData);
 
+      // Set dynamic page title
+      document.title = `${userData.name} - Rezerwacja spotkania`;
+
       setLoading(false);
     } catch (err) {
       setError('Wystąpił błąd podczas ładowania danych');

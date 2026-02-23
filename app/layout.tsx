@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Calendly Clone - Rezerwacja spotkań",
-  description: "Prosta aplikacja do rezerwacji spotkań online",
+  title: "Daniel Kotliński - Rezerwacja spotkania",
+  description: "Zarezerwuj spotkanie z Danielem Kotlinskim",
 };
 
 export default function RootLayout({
