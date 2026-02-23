@@ -109,10 +109,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send confirmation emails (don't wait for it to complete)
-    sendBookingEmails(user, booking).catch((error) => {
+    // Send confirmation emails
+    try {
+      await sendBookingEmails(user, booking);
+    } catch (error) {
       console.error('Error sending booking emails:', error);
-    });
+      // Continue - booking still succeeds even if email fails
+    }
 
     return NextResponse.json(booking, { status: 201 });
   } catch (error) {
