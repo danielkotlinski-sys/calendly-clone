@@ -19,6 +19,7 @@ jest.mock('@/lib/google-calendar', () => ({
 
 jest.mock('@/lib/email', () => ({
   sendBookingEmails: jest.fn(),
+  sendOrganizerNotification: jest.fn(),
   sendErrorAlert: jest.fn(),
 }));
 
@@ -27,6 +28,8 @@ import { NextRequest } from 'next/server';
 import * as db from '@/lib/db';
 import * as calendar from '@/lib/google-calendar';
 import * as email from '@/lib/email';
+
+const mockEmail = email as jest.Mocked<typeof email>;
 
 const mockUser = {
   id: 1,
@@ -86,7 +89,8 @@ describe('POST /api/bookings', () => {
     expect(data.google_calendar_event_id).toBe('cal-123');
     expect(data.google_meet_link).toBe('https://meet.google.com/abc');
     expect(calendar.createCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(email.sendBookingEmails).not.toHaveBeenCalled(); // Opcja A - nie wysyłamy Resend gdy GC działa
+    expect(email.sendOrganizerNotification).toHaveBeenCalledTimes(1); // zawsze powiadamiamy organizatora
+    expect(email.sendBookingEmails).not.toHaveBeenCalled(); // uczestnik przez GC, nie Resend
   });
 
   it('wysyła email przez Resend gdy Google Calendar nie jest połączony', async () => {
@@ -99,7 +103,8 @@ describe('POST /api/bookings', () => {
 
     expect(res.status).toBe(201);
     expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
-    expect(email.sendBookingEmails).toHaveBeenCalledTimes(1);
+    expect(email.sendOrganizerNotification).toHaveBeenCalledTimes(1); // zawsze
+    expect(email.sendBookingEmails).toHaveBeenCalledTimes(1); // fallback do uczestnika gdy brak GC
     expect(email.sendBookingEmails).toHaveBeenCalledWith(mockUser, mockBooking);
   });
 

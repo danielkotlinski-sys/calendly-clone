@@ -7,7 +7,7 @@ import {
   isTimeSlotAvailable,
   getMeetingSettings,
 } from '@/lib/db';
-import { sendBookingEmails, sendErrorAlert } from '@/lib/email';
+import { sendBookingEmails, sendOrganizerNotification, sendErrorAlert } from '@/lib/email';
 import { createCalendarEvent, isCalendarConnected } from '@/lib/google-calendar';
 
 // Validation schema
@@ -121,7 +121,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send confirmation emails via Resend only if Google Calendar didn't handle it
+    // Always notify organizer immediately via Resend
+    try {
+      await sendOrganizerNotification(
+        user,
+        validatedData.attendee_name,
+        validatedData.attendee_email,
+        validatedData.booking_date,
+        validatedData.booking_time,
+        duration
+      );
+    } catch (error) {
+      console.error('Error sending organizer notification:', error);
+    }
+
+    // Send attendee confirmation via Resend only if Google Calendar didn't handle it
     if (!calendarEventCreated) {
       try {
         await sendBookingEmails(user, booking);
