@@ -1,9 +1,11 @@
 import { Resend } from 'resend';
 import type { User, Booking } from '@/types';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const FROM_EMAIL = 'booking@danielkotlinski.pl';
+
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 // Send booking confirmation to the attendee
 export async function sendAttendeeConfirmation(
@@ -16,7 +18,7 @@ export async function sendAttendeeConfirmation(
   duration: number
 ): Promise<void> {
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: `Daniel Kotliński <${FROM_EMAIL}>`,
       to: attendeeEmail,
       subject: 'Potwierdzenie rezerwacji spotkania',
@@ -59,7 +61,7 @@ export async function sendOrganizerNotification(
   duration: number
 ): Promise<void> {
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: `Daniel Kotliński <${FROM_EMAIL}>`,
       to: organizer.email,
       subject: 'Nowa rezerwacja spotkania',
