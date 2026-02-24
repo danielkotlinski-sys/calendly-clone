@@ -58,7 +58,8 @@ export async function sendOrganizerNotification(
   attendeeEmail: string,
   bookingDate: string,
   bookingTime: string,
-  duration: number
+  duration: number,
+  meetLink?: string
 ): Promise<void> {
   try {
     await getResend().emails.send({
@@ -77,6 +78,7 @@ export async function sendOrganizerNotification(
             <p style="margin: 5px 0;"><strong>Data:</strong> ${new Date(bookingDate).toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             <p style="margin: 5px 0;"><strong>Godzina:</strong> ${bookingTime}</p>
             <p style="margin: 5px 0;"><strong>Czas trwania:</strong> ${duration} minut</p>
+            ${meetLink ? `<p style="margin: 15px 0 5px 0;"><strong>Link do spotkania:</strong> <a href="${meetLink}" style="color: #2563eb;">${meetLink}</a></p>` : ''}
           </div>
 
           <p>Spotkanie zostało dodane do Twojego kalendarza.</p>

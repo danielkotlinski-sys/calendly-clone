@@ -129,7 +129,8 @@ export async function POST(request: NextRequest) {
         validatedData.attendee_email,
         validatedData.booking_date,
         validatedData.booking_time,
-        duration
+        duration,
+        booking.google_meet_link
       );
     } catch (error) {
       console.error('Error sending organizer notification:', error);
