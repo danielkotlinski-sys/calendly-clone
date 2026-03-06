@@ -211,7 +211,7 @@ export async function createCalendarEvent(
   organizerEmail: string
 ): Promise<{ eventId: string; meetLink: string } | null> {
   const calendar = await getCalendarClient(userId);
-  if (!calendar) return null;
+  if (!calendar) throw new Error('Nie udało się uzyskać klienta Google Calendar (token wygasł lub jest nieprawidłowy — odłącz i ponownie połącz Google Calendar w dashboardzie)');
 
   try {
     // Parse date and time
@@ -274,6 +274,6 @@ export async function createCalendarEvent(
     };
   } catch (error) {
     console.error('Error creating calendar event:', error);
-    return null;
+    throw error;
   }
 }
