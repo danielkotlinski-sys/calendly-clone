@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://danielkotlinski.pl/kontakt/",
+      "permanent": true
+    }
+  ]
+}
